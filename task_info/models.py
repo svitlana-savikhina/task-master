@@ -11,4 +11,5 @@ class Task(Base):
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(String, index=True, unique=True)
     status = Column(String, default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+
