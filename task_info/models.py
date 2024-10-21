@@ -12,4 +12,3 @@ class Task(Base):
     task_id = Column(String, index=True, unique=True)
     status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.now)
-

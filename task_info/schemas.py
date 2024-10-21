@@ -18,4 +18,3 @@ class Task(TaskBase):
 
 class TaskCreate(TaskBase):
     task_id: constr(min_length=2, max_length=10)
-
