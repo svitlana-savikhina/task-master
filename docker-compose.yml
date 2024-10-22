@@ -1,0 +1,66 @@
+version: "3"
+
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "8000:8000"
+    volumes:
+        - ./:/app
+    command: >
+      sh -c "uvicorn main:app --host 0.0.0.0 --port 8000"
+
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - localstack
+
+  db:
+    image: postgres:14-alpine
+    ports:
+      - "5433:5432"
+    env_file:
+      - .env
+
+
+  redis:
+    image: redis:alpine
+
+
+  localstack:
+    image: localstack/localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,s3
+    volumes:
+      - ./localstack/init-scripts:/docker-entrypoint-initaws.d
+
+  celery:
+    build: .
+    volumes:
+      - .:/app
+    command: "celery -A task_info.celery worker --loglevel=info -P eventlet"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - app
+      - db
+      - localstack
+    environment:
+      - PYTHONPATH=/app
+
+
+  alembic:
+    build: .
+    volumes:
+      - .:/app
+    command: >
+      sh -c "alembic upgrade head"
+    env_file:
+      - .env
+    depends_on:
+      - db
