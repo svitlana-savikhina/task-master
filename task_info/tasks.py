@@ -1,3 +1,4 @@
+import logging
 import os
 
 from botocore.exceptions import ClientError
@@ -9,7 +10,9 @@ import time
 import boto3
 
 from task_info.crud_ import get_task, update_task_status
+from .logging_config import setup_logging
 
+setup_logging("task_master.log")
 
 load_dotenv()
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
@@ -26,14 +29,14 @@ def create_queue(queue_name):
         response = sqs.list_queues()
         for url in response.get('QueueUrls', []):
             if queue_name in url:
-                print(f"Queue already exists: {url}")
+                logging.info(f"Queue already exists: {url}")
                 return url
         # Create the queue if it does not exist
         response = sqs.create_queue(QueueName=queue_name)
-        print(f"Queue created: {response['QueueUrl']}")
+        logging.info(f"Queue created: {response['QueueUrl']}")
         return response['QueueUrl']
     except ClientError as e:
-        print(f"Error creating queue: {e}")
+        logging.error(f"Error creating queue: {e}")
         return None
 
 
@@ -64,6 +67,7 @@ S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 
 @celery_app.task
 def process_task(task_id: str):
+    logging.info(f"Processing task with task_id: {task_id}")
     db_session = SessionLocal()
 
     try:
@@ -73,13 +77,19 @@ def process_task(task_id: str):
 
         time.sleep(5)
 
+        logging.info(f"Updating task {task_id} status to 'completed'")
         update_task_status(db_session, task_id, "completed")
+        logging.info(f"Task {task_id} status set to 'completed'")
 
         # Write a file to S3
-        sqs.put_object(Bucket="my-bucket", Key=f"{task_id}.txt", Body=f"Task ID: {task_id}")
+        logging.info(f"Writing task {task_id} result to S3 bucket.")
+        s3.put_object(Bucket="my-bucket", Key=f"{task_id}.txt", Body=f"Task ID: {task_id}")
+        logging.info(f"Task {task_id} result written to S3 bucket successfully.")
 
     except Exception as e:
-        print(f"An error occurred while processing task {task_id}: {str(e)}")
+        logging.error(f"An error occurred while processing task {task_id}: {str(e)}")
         update_task_status(db_session, task_id, "failed")
+        logging.info(f"Task {task_id} status set to 'failed' due to an error.")
     finally:
+        logging.info(f"Closing database session for task {task_id}.")
         db_session.close()
