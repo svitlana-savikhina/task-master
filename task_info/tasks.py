@@ -7,9 +7,9 @@ from dotenv import load_dotenv
 from database import SessionLocal
 from task_info.celery import Celery
 import time
-import boto3
 
-from task_info.crud_ import get_task, update_task_status
+from task_info.crud_ import update_task_status
+from .aws_utils import create_aws_client
 from .logging_config import setup_logging
 
 setup_logging("task_master.log")
@@ -17,9 +17,25 @@ setup_logging("task_master.log")
 load_dotenv()
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 
-# Initializing the SQS client
-sqs = boto3.client("sqs", endpoint_url="http://localstack:4566", region_name="eu-central-1")
+# Initializing Celery
+celery_app = Celery(
+    "tasks",
+    broker="sqs://",
+    broker_transport_options={
+        "region": "eu-central-1",
+        "queue_name_prefix": "",
+        "polling_interval": 10,
+        "visibility_timeout": 3600,
+        "endpoint_url": "http://localstack:4566",
+        "aws_access_key_id": AWS_ACCESS_KEY_ID,
+        "aws_secret_access_key": AWS_SECRET_ACCESS_KEY,
+    },
+)
+
+sqs = create_aws_client("sqs")
+s3 = create_aws_client("s3")
 
 
 # Create the SQS queue if it does not exist
@@ -27,42 +43,22 @@ def create_queue(queue_name):
     try:
         # Check if the queue already exists
         response = sqs.list_queues()
-        for url in response.get('QueueUrls', []):
+        for url in response.get("QueueUrls", []):
             if queue_name in url:
                 logging.info(f"Queue already exists: {url}")
                 return url
-        # Create the queue if it does not exist
+
         response = sqs.create_queue(QueueName=queue_name)
         logging.info(f"Queue created: {response['QueueUrl']}")
-        return response['QueueUrl']
+        return response["QueueUrl"]
     except ClientError as e:
         logging.error(f"Error creating queue: {e}")
         return None
 
 
-# Initialize the Celery app
+# Define and Create SQS Queue
 queue_name = "my-queue"
 create_queue(queue_name)
-
-# Initializing Celery
-celery_app = Celery("tasks",
-                    broker="sqs://",
-                    broker_transport_options={
-                        'region': 'eu-central-1',
-                        'queue_name_prefix': '',
-                        'polling_interval': 10,
-                        'visibility_timeout': 3600,
-                        'endpoint_url': "http://localstack:4566",
-                        'aws_access_key_id': AWS_ACCESS_KEY_ID,
-                        'aws_secret_access_key': AWS_SECRET_ACCESS_KEY,
-                    }
-                    )
-
-# Initializing the S3 client
-s3 = boto3.client("s3", endpoint_url="http://localstack:4566")
-
-# Getting parameters from environment variables
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 
 
 @celery_app.task
@@ -71,7 +67,6 @@ def process_task(task_id: str):
     db_session = SessionLocal()
 
     try:
-        db_task = get_task(db_session, task_id)
 
         update_task_status(db_session, task_id, "in progress")
 
@@ -83,7 +78,9 @@ def process_task(task_id: str):
 
         # Write a file to S3
         logging.info(f"Writing task {task_id} result to S3 bucket.")
-        s3.put_object(Bucket="my-bucket", Key=f"{task_id}.txt", Body=f"Task ID: {task_id}")
+        s3.put_object(
+            Bucket="my-bucket", Key=f"{task_id}.txt", Body=f"Task ID: {task_id}"
+        )
         logging.info(f"Task {task_id} result written to S3 bucket successfully.")
 
     except Exception as e:

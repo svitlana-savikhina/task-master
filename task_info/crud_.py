@@ -3,21 +3,15 @@ import logging
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from .aws_utils import create_aws_client
 from .models import Task
 from .schemas import TaskCreate
-import boto3
 import os
 from .logging_config import setup_logging
 
 setup_logging("task_master.log")
 
 SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL")
-
-# Initializing the SQS Client
-sqs_client = boto3.client("sqs",
-                          endpoint_url="http://localstack:4566",
-                          region_name="eu-central-1"
-                          )
 
 
 def create_task(db: Session, task: TaskCreate):
@@ -29,7 +23,9 @@ def create_task(db: Session, task: TaskCreate):
 
     existing_task = db.query(Task).filter(Task.task_id == task.task_id).first()
     if existing_task:
-        logging.error(f"Task creation failed: Task with task_id {task.task_id} already exists.")
+        logging.error(
+            f"Task creation failed: Task with task_id {task.task_id} already exists."
+        )
         raise HTTPException(
             status_code=400, detail="Task with this task_id already exists"
         )
@@ -40,7 +36,12 @@ def create_task(db: Session, task: TaskCreate):
     db.commit()
     db.refresh(db_task)
 
-    logging.info(f"Task {task.task_id} created successfully. Sending task to SQS queue.")
+    logging.info(
+        f"Task {task.task_id} created successfully. Sending task to SQS queue."
+    )
+
+    # Creating an SQS client
+    sqs_client = create_aws_client("sqs")
 
     # Sending a task to the SQS queue
     try:
