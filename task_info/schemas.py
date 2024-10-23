@@ -18,11 +18,13 @@ class Task(TaskBase):
 
 
 class TaskCreate(TaskBase):
-    task_id: str = Field(..., description="Only letters and digits allowed, length between 2 and 10")
+    task_id: str = Field(
+        ..., description="Only letters and digits allowed, length between 2 and 10"
+    )
 
-    @field_validator('task_id')
+    @field_validator("task_id")
     def validate_task_id(cls, value):
-        if not re.match(r'^[A-Za-z0-9]{2,10}$', value):
+        if not re.match(r"^[A-Za-z0-9]{2,10}$", value):
             raise ValueError(
                 "Invalid task_id format. Only letters and digits are allowed, and length must be between 2 and 10 "
                 "characters."
