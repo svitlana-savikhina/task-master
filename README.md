@@ -31,7 +31,7 @@ pip install -r requirements.txt
 ```
 ### 6.Run:
 ```shell
-uvicorn aggregator_of_advertisements.main:app --reload
+uvicorn main:app --reload
 ```
 This will start the FastAPI server and make the application available at http://127.0.0.1:8000.
 ## Run with Docker:
